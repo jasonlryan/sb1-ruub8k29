@@ -1,10 +1,12 @@
 // Model Types
 export interface MarketingChannel {
+  id?: string;
   name: string;
   monthlyBudget: number;
   costPerLead: number;
   leadsGenerated: number;
   notes: string;
+  user_id: string;
 }
 
 export interface Employee {

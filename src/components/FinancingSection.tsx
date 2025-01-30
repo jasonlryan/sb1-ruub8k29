@@ -1,7 +1,7 @@
-import React from 'react';
-import { Table } from './Table';
-import { FundingRound } from '../types/model';
-import { PlusCircle } from 'lucide-react';
+import React from "react";
+import { Table } from "./Table";
+import { FundingRound } from "../types/model";
+import { PlusCircle } from "lucide-react";
 
 interface FinancingSectionProps {
   fundingRounds: FundingRound[];
@@ -16,24 +16,38 @@ export function FinancingSection({
   setFundingRounds,
   onAddRow,
   onDelete,
-  icon
+  icon,
 }: FinancingSectionProps) {
   const totals = {
-    totalRaised: fundingRounds.reduce((sum, round) => sum + round.amountRaised, 0),
-    totalEquitySold: fundingRounds.reduce((sum, round) => sum + round.equitySold, 0),
-    latestValuation: fundingRounds[fundingRounds.length - 1]?.valuationPre || 0
+    totalRaised: fundingRounds.reduce(
+      (sum, round) => sum + round.amountRaised,
+      0
+    ),
+    totalEquitySold: fundingRounds.reduce(
+      (sum, round) => sum + round.equitySold,
+      0
+    ),
+    latestValuation: fundingRounds[fundingRounds.length - 1]?.valuationPre || 0,
   };
 
-  const handleEdit = (rowIndex: number, field: keyof FundingRound, value: string) => {
+  const handleEdit = (
+    rowIndex: number,
+    field: keyof FundingRound,
+    value: string
+  ) => {
     const newRounds = [...fundingRounds];
     const round = { ...newRounds[rowIndex] };
-    
-    if (field === 'amountRaised' || field === 'valuationPre' || field === 'equitySold') {
+
+    if (
+      field === "amountRaised" ||
+      field === "valuationPre" ||
+      field === "equitySold"
+    ) {
       round[field] = parseFloat(value) || 0;
     } else {
       round[field] = value;
     }
-    
+
     newRounds[rowIndex] = round;
     setFundingRounds(newRounds);
   };
@@ -57,16 +71,28 @@ export function FinancingSection({
           </button>
         </div>
         <Table
-          headers={['Round', 'Amount Raised', 'Valuation (Pre)', '% Equity Sold', 'Close Date']}
+          headers={[
+            "Round",
+            "Amount Raised",
+            "Valuation (Pre)",
+            "% Equity Sold",
+            "Close Date",
+          ]}
           data={fundingRounds.map((round) => [
-            round.round,
-            `£${round.amountRaised.toLocaleString()}`,
-            `£${round.valuationPre.toLocaleString()}`,
-            `${round.equitySold}%`,
-            round.closeDate
+            round?.round || "",
+            `£${(round?.amountRaised || 0).toLocaleString()}`,
+            `£${(round?.valuationPre || 0).toLocaleString()}`,
+            `${(round?.equitySold || 0).toFixed(1)}%`,
+            round?.closeDate || "",
           ])}
           onEdit={(rowIndex, colIndex, value) => {
-            const fields: (keyof FundingRound)[] = ['round', 'amountRaised', 'valuationPre', 'equitySold', 'closeDate'];
+            const fields: (keyof FundingRound)[] = [
+              "round",
+              "amountRaised",
+              "valuationPre",
+              "equitySold",
+              "closeDate",
+            ];
             handleEdit(rowIndex, fields[colIndex], value);
           }}
           onDelete={onDelete}
