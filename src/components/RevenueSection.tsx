@@ -35,6 +35,10 @@ export function RevenueSection({
       arr: subscriptions.reduce((sum, sub) => sum + sub.mrr, 0) * 12,
       cogs: cogs.reduce((sum, cost) => sum + cost.monthlyCost, 0) * 12,
     },
+    subscribers: subscriptions.reduce(
+      (sum, sub) => sum + sub.subscriberCount,
+      0
+    ),
   };
 
   const margins = {
@@ -135,13 +139,28 @@ export function RevenueSection({
             <h4 className="font-semibold text-gray-700 mb-2">
               Monthly Revenue
             </h4>
-            <p>Total MRR: £{totals.monthly.mrr.toLocaleString()}</p>
-            <p>Total Subscribers: {totals.monthly.subscribers}</p>
-            <p>Avg. Revenue Per User: £{margins.avgRevenuePerUser}</p>
+            <p>Total Subscribers: {totals.subscribers}</p>
+            <p>Monthly Revenue: £{totals.monthly.mrr.toLocaleString()}</p>
+            <p>
+              Average Revenue per User: £
+              {totals.subscribers > 0
+                ? Math.round(
+                    totals.monthly.mrr / totals.subscribers
+                  ).toLocaleString()
+                : 0}
+            </p>
           </div>
           <div className="p-4 bg-blue-50 rounded-md">
             <h4 className="font-semibold text-blue-700 mb-2">Annual Revenue</h4>
-            <p>Total ARR: £{totals.annual.arr.toLocaleString()}</p>
+            <p>Annual Revenue: £{(totals.monthly.mrr * 12).toLocaleString()}</p>
+            <p>
+              Average Annual Revenue per User: £
+              {totals.subscribers > 0
+                ? Math.round(
+                    (totals.monthly.mrr * 12) / totals.subscribers
+                  ).toLocaleString()
+                : 0}
+            </p>
           </div>
         </div>
       </div>
@@ -171,12 +190,33 @@ export function RevenueSection({
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 bg-gray-50 rounded-md">
             <h4 className="font-semibold text-gray-700 mb-2">Monthly COGS</h4>
-            <p>Total COGS: £{totals.monthly.cogs.toLocaleString()}</p>
-            <p>Gross Margin: {margins.grossMargin}%</p>
+            <p>Total Monthly COGS: £{totals.monthly.cogs.toLocaleString()}</p>
+            <p>
+              Monthly Gross Margin:{" "}
+              {totals.monthly.mrr > 0
+                ? (
+                    100 *
+                    (1 - totals.monthly.cogs / totals.monthly.mrr)
+                  ).toFixed(1)
+                : "0.0"}
+              %
+            </p>
           </div>
           <div className="p-4 bg-blue-50 rounded-md">
             <h4 className="font-semibold text-blue-700 mb-2">Annual COGS</h4>
-            <p>Total COGS: £{totals.annual.cogs.toLocaleString()}</p>
+            <p>
+              Total Annual COGS: £{(totals.monthly.cogs * 12).toLocaleString()}
+            </p>
+            <p>
+              Annual Gross Margin:{" "}
+              {totals.monthly.mrr > 0
+                ? (
+                    100 *
+                    (1 - totals.monthly.cogs / totals.monthly.mrr)
+                  ).toFixed(1)
+                : "0.0"}
+              %
+            </p>
           </div>
         </div>
       </div>

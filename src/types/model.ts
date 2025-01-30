@@ -1,6 +1,6 @@
 // Model Types
 export interface MarketingChannel {
-  id?: string;
+  id: string;
   name: string;
   monthlyBudget: number;
   costPerLead: number;
@@ -23,6 +23,16 @@ export interface FunnelConversion {
   sql: number;
   sqlToDealRate: number;
   deals: number;
+  user_id: string;
+}
+
+export interface ActiveSubscriber {
+  month: string;
+  existingSubs: number;
+  newDeals: number;
+  churnedSubs: number;
+  endingSubs: number;
+  user_id: string;
 }
 
 export interface Subscription {
@@ -30,12 +40,14 @@ export interface Subscription {
   monthlyPrice: number;
   subscriberCount: number;
   mrr: number;
+  user_id: string;
 }
 
 export interface OperatingExpense {
   category: string;
   monthlyCost: number;
   notes: string;
+  user_id: string;
 }
 
 export interface FundingRound {
@@ -44,14 +56,6 @@ export interface FundingRound {
   valuationPre: number;
   equitySold: number;
   closeDate: string;
-}
-
-export interface ActiveSubscribers {
-  month: string;
-  existingSubs: number;
-  newDeals: number;
-  churnedSubs: number;
-  endingSubs: number;
 }
 
 export interface COGS {
@@ -67,3 +71,9 @@ export interface Department {
   additionalCosts: number;
   monthlyTotal: number;
 }
+
+// Add strict typing for function parameters
+export type TableSection = "marketing" | "departments" | "opex" | "subscriptions" | "activeSubscribers";
+
+export type HandleAddRow = (section: TableSection, data?: Record<string, unknown>) => void;
+export type HandleUpdateData<T> = (index: number, field: keyof T, value: string) => void;

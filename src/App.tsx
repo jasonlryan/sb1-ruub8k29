@@ -33,6 +33,7 @@ import {
 import { testConnection } from "./test-connection";
 import { FinancialSummary } from "./components/FinancialSummary";
 import { DEFAULT_MARKETING_CHANNELS } from "./constants/marketing";
+import { debounce } from "lodash";
 
 function App() {
   const { user, signOut } = useSupabase();
@@ -87,6 +88,7 @@ function App() {
           const defaultChannelsWithUserId = DEFAULT_MARKETING_CHANNELS.map(
             (channel) => ({
               ...channel,
+              id: crypto.randomUUID(),
               user_id: user.id,
             })
           );
@@ -101,6 +103,7 @@ function App() {
           transformedChannels = defaultChannelsWithUserId; // Store for funnel use
         } else {
           transformedChannels = channelsData.map((channel) => ({
+            id: channel.id,
             name: channel.name,
             monthlyBudget: channel.monthly_budget,
             costPerLead: channel.cost_per_lead,
@@ -266,45 +269,49 @@ function App() {
         }
 
         // Load active subscribers
-        const { data: activeSubscribersData, error: activeSubscribersError } =
-          await supabase
-            .from("active_subscribers")
-            .select("*")
-            .eq("user_id", user.id);
+        const { data: subsData, error: subsError } = await supabase
+          .from("active_subscribers")
+          .select("*")
+          .eq("user_id", user.id);
 
-        if (activeSubscribersError) throw activeSubscribersError;
+        if (subsError) throw subsError;
 
-        if (!activeSubscribersData || activeSubscribersData.length === 0) {
-          // Create default active subscribers data with last 3 months
-          const months = ["January", "February", "March"];
-          const defaultActiveSubscribers = months.map((month, index) => ({
-            month,
-            existingSubs: index === 0 ? 0 : 0, // First month starts with 0
-            newDeals: 0,
-            churnedSubs: 0,
-            endingSubs: 0,
-            user_id: user.id,
-          }));
+        if (!subsData || subsData.length === 0) {
+          const defaultSubs = [
+            {
+              month: "March",
+              existingSubs: 0,
+              newDeals: 114,
+              churnedSubs: 0,
+              endingSubs: 114,
+              user_id: user.id,
+            },
+            {
+              month: "April",
+              existingSubs: 114,
+              newDeals: 114,
+              churnedSubs: 10,
+              endingSubs: 218,
+              user_id: user.id,
+            },
+            {
+              month: "May",
+              existingSubs: 218,
+              newDeals: 114,
+              churnedSubs: 15,
+              endingSubs: 317,
+              user_id: user.id,
+            },
+          ];
 
           const { error: insertError } = await supabase
             .from("active_subscribers")
-            .insert(defaultActiveSubscribers);
+            .insert(defaultSubs);
 
           if (insertError) throw insertError;
-          setActiveSubscribers(defaultActiveSubscribers);
+          setActiveSubscribers(defaultSubs);
         } else {
-          // Transform from snake_case to camelCase
-          const transformedActiveSubscribers = activeSubscribersData.map(
-            (sub) => ({
-              month: sub.month,
-              existingSubs: sub.existing_subs,
-              newDeals: sub.new_deals,
-              churnedSubs: sub.churned_subs,
-              endingSubs: sub.ending_subs,
-              user_id: sub.user_id,
-            })
-          );
-          setActiveSubscribers(transformedActiveSubscribers);
+          setActiveSubscribers(subsData);
         }
 
         // Load cogs
@@ -353,47 +360,13 @@ function App() {
 
         if (departmentsError) throw departmentsError;
 
-        if (!departmentsData || departmentsData.length === 0) {
-          const defaultDepartments = [
-            {
-              name: "Founders/Exec",
-              fte: 2,
-              salary: 50000,
-              additionalCosts: 0,
-              monthlyTotal: Math.floor((50000 / 12) * 2 * (1 + 0 / 100)),
-              user_id: user.id,
-            },
-            {
-              name: "Marketing (Setters)",
-              fte: 2,
-              salary: 35000,
-              additionalCosts: 0,
-              monthlyTotal: Math.floor((35000 / 12) * 2 * (1 + 0 / 100)),
-              user_id: user.id,
-            },
-            {
-              name: "Sales/Closer",
-              fte: 1,
-              salary: 35000,
-              additionalCosts: 0,
-              monthlyTotal: Math.floor((35000 / 12) * 1 * (1 + 0 / 100)),
-              user_id: user.id,
-            },
-          ];
-
-          const { error: insertError } = await supabase
-            .from("departments")
-            .insert(defaultDepartments);
-
-          if (insertError) throw insertError;
-          setDepartments(defaultDepartments);
-        } else {
+        if (departmentsData && departmentsData.length > 0) {
           const transformedDepartments = departmentsData.map((dept) => ({
             name: dept.name,
             fte: dept.fte,
             salary: dept.salary,
             additionalCosts: dept.additional_costs,
-            monthlyTotal: Math.floor(
+            monthlyTotal: Math.round(
               (dept.salary / 12) * dept.fte * (1 + dept.additional_costs / 100)
             ),
             user_id: dept.user_id,
@@ -530,7 +503,36 @@ function App() {
     };
   }, [marketingChannels, departments, cogs, operatingExpenses, subscriptions]);
 
-  // Handle row updates
+  // Inside App component, before the handlers
+  const debouncedUpdate = useMemo(
+    () =>
+      debounce(async (channel: MarketingChannel) => {
+        if (!user) return;
+
+        try {
+          const { error } = await supabase
+            .from("marketing_channels")
+            .update({
+              monthly_budget: channel.monthlyBudget,
+              cost_per_lead: channel.costPerLead,
+              leads_generated: channel.leadsGenerated,
+              notes: channel.notes,
+            })
+            .eq("id", channel.id)
+            .eq("user_id", user.id);
+
+          if (error) throw error;
+        } catch (err) {
+          console.error("Debounced update error:", err);
+          setError(
+            err instanceof Error ? err.message : "Failed to update channel"
+          );
+        }
+      }, 1000), // Wait 1 second after last keystroke
+    [user]
+  );
+
+  // Modify handleMarketingChannelUpdate
   const handleMarketingChannelUpdate = useCallback(
     async (index: number, field: keyof MarketingChannel, value: string) => {
       if (!user) return;
@@ -538,64 +540,29 @@ function App() {
       try {
         console.log("Updating channel:", { index, field, value });
         const channel = marketingChannels[index];
-        console.log("Current channel data:", channel);
+        const updatedChannel = { ...channel };
 
-        const updatedChannel = { ...channel } as MarketingChannel;
-
+        // Handle different field types
         if (field === "monthlyBudget" || field === "costPerLead") {
-          const numericValue = parseFloat(value) || 0;
+          const numericValue = parseFloat(value.replace(/[£,]/g, "")) || 0;
           updatedChannel[field] = numericValue;
 
-          updatedChannel.leadsGenerated = updatedChannel.costPerLead
-            ? Math.floor(
-                updatedChannel.monthlyBudget / updatedChannel.costPerLead
-              )
-            : 0;
-        } else if (field === "notes" || field === "name") {
+          if (updatedChannel.costPerLead > 0) {
+            updatedChannel.leadsGenerated = Math.floor(
+              updatedChannel.monthlyBudget / updatedChannel.costPerLead
+            );
+          }
+        } else {
           updatedChannel[field] = value;
         }
 
-        // Update in Supabase
-        const { error } = await supabase
-          .from("marketing_channels")
-          .update({
-            monthly_budget: updatedChannel.monthlyBudget,
-            cost_per_lead: updatedChannel.costPerLead,
-            leads_generated: updatedChannel.leadsGenerated,
-            notes: updatedChannel.notes,
-          })
-          .eq("name", channel.name)
-          .eq("user_id", user.id);
-
-        if (error) throw error;
-
-        // Update local state
+        // Update local state immediately
         setMarketingChannels((prev) =>
           prev.map((ch, i) => (i === index ? updatedChannel : ch))
         );
 
-        // Update funnel conversions
-        setFunnelConversions((prev) =>
-          prev.map((conv) =>
-            conv.channel === channel.name
-              ? {
-                  ...conv,
-                  mql: updatedChannel.leadsGenerated,
-                  sql: Math.floor(
-                    updatedChannel.leadsGenerated * (conv.mqlToSqlRate / 100)
-                  ),
-                  deals: Math.floor(
-                    Math.floor(
-                      updatedChannel.leadsGenerated * (conv.mqlToSqlRate / 100)
-                    ) *
-                      (conv.sqlToDealRate / 100)
-                  ),
-                }
-              : conv
-          )
-        );
-
-        console.log("Update successful, new channel data:", updatedChannel);
+        // Debounce the database update
+        debouncedUpdate(updatedChannel);
       } catch (err) {
         console.error("Update error:", err);
         setError(
@@ -603,7 +570,7 @@ function App() {
         );
       }
     },
-    [marketingChannels, user]
+    [marketingChannels, user, debouncedUpdate]
   );
 
   const handleMarketingTeamUpdate = useCallback(
@@ -650,7 +617,7 @@ function App() {
   );
 
   const handleAddRow = useCallback(
-    async (section: string) => {
+    async (section: string, data?: any) => {
       if (!user) return;
 
       try {
@@ -661,20 +628,37 @@ function App() {
             break;
           }
           case "team": {
+            // Create the new team member with proper snake_case for database
             const newMember = {
-              role: "New Role",
-              fte: 0,
-              salaryPerFte: 0,
-              monthlyTotal: 0,
+              role: data?.role || "New Role",
+              fte: data?.fte || 0,
+              salary_per_fte: data?.salary_per_fte || 0,
+              monthly_total: Math.floor(
+                ((data?.salary_per_fte || 0) / 12) * (data?.fte || 0)
+              ), // Calculate monthly total
+              user_id: user.id,
             };
 
-            const { error } = await supabase.from("marketing_team").insert({
-              ...newMember,
-              user_id: user.id,
-            });
+            // Insert into database
+            const { data: insertedData, error } = await supabase
+              .from("marketing_team")
+              .insert(newMember)
+              .select()
+              .single();
 
             if (error) throw error;
-            setMarketingTeam((prev) => [...prev, newMember]);
+
+            // Transform the inserted data back to camelCase for state
+            const transformedMember = {
+              role: insertedData.role,
+              fte: insertedData.fte,
+              salaryPerFte: insertedData.salary_per_fte,
+              monthlyTotal: insertedData.monthly_total,
+              user_id: insertedData.user_id,
+            };
+
+            // Update local state
+            setMarketingTeam((prev) => [...prev, transformedMember]);
             break;
           }
           // Add other cases as needed
@@ -734,132 +718,113 @@ function App() {
 
     setSyncing(true);
     try {
-      console.log("🔄 Starting data sync with Supabase...");
-
       // Test connection first
       const isConnected = await testConnection();
       if (!isConnected) {
         throw new Error("Failed to connect to Supabase");
       }
 
-      // Sync marketing channels
-      console.log("📤 Syncing marketing channels...");
-      for (const channel of marketingChannels) {
-        const { error } = await supabase.from("marketing_channels").upsert({
-          name: channel.name,
-          monthly_budget: channel.monthlyBudget,
-          cost_per_lead: channel.costPerLead,
-          leads_generated: channel.leadsGenerated,
-          notes: channel.notes,
-          user_id: user.id,
-        });
+      // Marketing Channels
+      const { error: marketingError } = await supabase
+        .from("marketing_channels")
+        .delete()
+        .eq("user_id", user.id);
+      if (marketingError) throw marketingError;
+
+      if (marketingChannels.length > 0) {
+        const { error } = await supabase.from("marketing_channels").insert(
+          marketingChannels.map((channel) => ({
+            name: channel.name,
+            monthly_budget: channel.monthlyBudget,
+            cost_per_lead: channel.costPerLead,
+            leads_generated: channel.leadsGenerated,
+            notes: channel.notes,
+            user_id: user.id,
+          }))
+        );
         if (error) throw error;
       }
 
-      // Sync marketing team
-      console.log("📤 Syncing marketing team...");
-      for (const member of marketingTeam) {
-        const { error } = await supabase.from("marketing_team").upsert({
-          role: member.role,
-          fte: member.fte,
-          salary_per_fte: member.salaryPerFte,
-          monthly_total: member.monthlyTotal,
-          user_id: user.id,
-        });
+      // Funnel Conversions
+      const { error: funnelError } = await supabase
+        .from("funnel_conversions")
+        .delete()
+        .eq("user_id", user.id);
+      if (funnelError) throw funnelError;
+
+      if (funnelConversions.length > 0) {
+        const { error } = await supabase.from("funnel_conversions").insert(
+          funnelConversions.map((conv) => ({
+            channel: conv.channel,
+            mql: conv.mql,
+            mql_to_sql_rate: conv.mqlToSqlRate,
+            sql: conv.sql,
+            sql_to_deal_rate: conv.sqlToDealRate,
+            deals: conv.deals,
+            user_id: user.id,
+          }))
+        );
         if (error) throw error;
       }
 
-      // Sync funnel conversions
-      console.log("📤 Syncing funnel conversions...");
-      for (const conv of funnelConversions) {
-        const { error } = await supabase.from("funnel_conversions").upsert({
-          channel: conv.channel,
-          mql: conv.mql,
-          mql_to_sql_rate: conv.mqlToSqlRate,
-          sql: conv.sql,
-          sql_to_deal_rate: conv.sqlToDealRate,
-          deals: conv.deals,
-          user_id: user.id,
-        });
+      // Active Subscribers
+      const { error: subsError } = await supabase
+        .from("active_subscribers")
+        .delete()
+        .eq("user_id", user.id);
+      if (subsError) throw subsError;
+
+      if (activeSubscribers.length > 0) {
+        const { error } = await supabase.from("active_subscribers").insert(
+          activeSubscribers.map((sub) => ({
+            month: sub.month,
+            existing_subs: sub.existingSubs,
+            new_deals: sub.newDeals,
+            churned_subs: sub.churnedSubs,
+            ending_subs: sub.endingSubs,
+            user_id: user.id,
+          }))
+        );
         if (error) throw error;
       }
 
-      // Sync subscriptions
-      console.log("📤 Syncing subscriptions...");
-      for (const sub of subscriptions) {
-        const { error } = await supabase.from("subscriptions").upsert({
-          tier: sub.tier,
-          monthly_price: sub.monthlyPrice,
-          subscriber_count: sub.subscriberCount,
-          mrr: sub.mrr,
-          user_id: user.id,
-        });
+      // Departments
+      const { error: deptError } = await supabase
+        .from("departments")
+        .delete()
+        .eq("user_id", user.id);
+      if (deptError) throw deptError;
+
+      if (departments.length > 0) {
+        const { error } = await supabase.from("departments").insert(
+          departments.map((dept) => ({
+            name: dept.name,
+            fte: dept.fte,
+            salary: dept.salary,
+            additional_costs: dept.additionalCosts,
+            monthly_total: dept.monthlyTotal,
+            user_id: user.id,
+          }))
+        );
         if (error) throw error;
       }
 
-      // Sync active subscribers
-      console.log("📤 Syncing active subscribers...");
-      for (const sub of activeSubscribers) {
-        const { error } = await supabase.from("active_subscribers").upsert({
-          month: sub.month,
-          existing_subs: sub.existingSubs,
-          new_deals: sub.newDeals,
-          churned_subs: sub.churnedSubs,
-          ending_subs: sub.endingSubs,
-          user_id: user.id,
-        });
-        if (error) throw error;
-      }
+      // Operating Expenses
+      const { error: opexError } = await supabase
+        .from("operating_expenses")
+        .delete()
+        .eq("user_id", user.id);
+      if (opexError) throw opexError;
 
-      // Sync COGS
-      console.log("📤 Syncing COGS...");
-      for (const cost of cogs) {
-        const { error } = await supabase.from("cogs").upsert({
-          category: cost.category,
-          monthly_cost: cost.monthlyCost,
-          notes: cost.notes,
-          user_id: user.id,
-        });
-        if (error) throw error;
-      }
-
-      // Sync departments
-      console.log("📤 Syncing departments...");
-      for (const dept of departments) {
-        const { error } = await supabase.from("departments").upsert({
-          name: dept.name,
-          fte: dept.fte,
-          salary: dept.salary,
-          additional_costs: dept.additionalCosts,
-          monthly_total: dept.monthlyTotal,
-          user_id: user.id,
-        });
-        if (error) throw error;
-      }
-
-      // Sync operating expenses
-      console.log("📤 Syncing operating expenses...");
-      for (const expense of operatingExpenses) {
-        const { error } = await supabase.from("operating_expenses").upsert({
-          category: expense.category,
-          monthly_cost: expense.monthlyCost,
-          notes: expense.notes,
-          user_id: user.id,
-        });
-        if (error) throw error;
-      }
-
-      // Sync funding rounds
-      console.log("📤 Syncing funding rounds...");
-      for (const round of fundingRounds) {
-        const { error } = await supabase.from("funding_rounds").upsert({
-          round: round.round,
-          amount_raised: round.amountRaised,
-          valuation_pre: round.valuationPre,
-          equity_sold: round.equitySold,
-          close_date: round.closeDate,
-          user_id: user.id,
-        });
+      if (operatingExpenses.length > 0) {
+        const { error } = await supabase.from("operating_expenses").insert(
+          operatingExpenses.map((expense) => ({
+            category: expense.category,
+            monthly_cost: expense.monthlyCost,
+            notes: expense.notes,
+            user_id: user.id,
+          }))
+        );
         if (error) throw error;
       }
 
@@ -904,6 +869,101 @@ function App() {
       userId: user?.id,
     });
   }, [user]);
+
+  // Add this function to calculate monthly totals from funnel
+  const calculateMonthlyDeals = useMemo(() => {
+    return funnelConversions.reduce((sum, conv) => sum + conv.deals, 0);
+  }, [funnelConversions]);
+
+  // Add this effect to update active subscribers whenever funnel deals change
+  useEffect(() => {
+    if (activeSubscribers.length > 0) {
+      const totalDeals = calculateMonthlyDeals; // This should be 30 based on your funnel
+      setActiveSubscribers((prev) =>
+        prev.map((sub, index) => {
+          // Start fresh calculation for this month
+          const updatedSub = {
+            ...sub,
+            newDeals: totalDeals, // Set new deals to match funnel total (30)
+          };
+
+          // Recalculate ending subs
+          updatedSub.endingSubs =
+            updatedSub.existingSubs + totalDeals - updatedSub.churnedSubs;
+
+          return updatedSub;
+        })
+      );
+    }
+  }, [funnelConversions, calculateMonthlyDeals]);
+
+  // Modify handleActiveSubscriberUpdate to only allow editing existingSubs and churnedSubs
+  const handleActiveSubscriberUpdate = useCallback(
+    async (index: number, field: keyof ActiveSubscribers, value: string) => {
+      if (!user) return;
+
+      try {
+        const subscribers = [...activeSubscribers];
+        const current = { ...subscribers[index] };
+        const numericValue = parseInt(value.replace(/,/g, "")) || 0;
+
+        switch (field) {
+          case "existingSubs":
+            current.existingSubs = numericValue;
+            break;
+          case "churnedSubs":
+            current.churnedSubs = numericValue;
+            break;
+          default:
+            return; // Don't allow editing other fields
+        }
+
+        // Calculate ending subs using funnel deals
+        current.endingSubs =
+          current.existingSubs + calculateMonthlyDeals - current.churnedSubs;
+
+        // Update the current month
+        subscribers[index] = current;
+
+        // Recalculate all subsequent months
+        for (let i = index + 1; i < subscribers.length; i++) {
+          subscribers[i].existingSubs = subscribers[i - 1].endingSubs;
+          subscribers[i].endingSubs =
+            subscribers[i].existingSubs +
+            calculateMonthlyDeals -
+            subscribers[i].churnedSubs;
+        }
+
+        setActiveSubscribers(subscribers);
+      } catch (err) {
+        console.error("Error updating active subscribers:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to update subscribers"
+        );
+      }
+    },
+    [activeSubscribers, calculateMonthlyDeals, user]
+  );
+
+  // Add handler for adding new months
+  const handleAddSubscriberMonth = async () => {
+    const lastMonth = activeSubscribers[activeSubscribers.length - 1];
+    const newMonth = {
+      month: "New Month", // TODO: Calculate next month
+      existingSubs: lastMonth.endingSubs,
+      newDeals: 114, // Default from pattern
+      churnedSubs: 0,
+      endingSubs: lastMonth.endingSubs + 114, // Initial calculation
+      user_id: user.id,
+    };
+
+    const { error } = await supabase
+      .from("active_subscribers")
+      .insert(newMonth);
+
+    if (error) throw error;
+    setActiveSubscribers([...activeSubscribers, newMonth]);
+  };
 
   if (!user) {
     return <AuthForm />;
@@ -1002,8 +1062,6 @@ function App() {
           <FunnelSection
             conversions={funnelConversions}
             setConversions={setFunnelConversions}
-            onAddRow={() => handleAddRow("funnel")}
-            onDelete={(index) => handleDeleteRow("funnel", index)}
             icon={<TrendingUp className="w-6 h-6 text-green-600" />}
           />
 
@@ -1012,14 +1070,15 @@ function App() {
             activeSubscribers={activeSubscribers}
             setSubscriptions={setSubscriptions}
             setActiveSubscribers={setActiveSubscribers}
-            onAddRow={(section) => handleAddRow(section)}
+            onAddRow={handleAddSubscriberMonth}
             onDeleteSubscription={(index) =>
               handleDeleteRow("subscriptions", index)
             }
             onDeleteActiveSubscriber={(index) =>
               handleDeleteRow("activeSubscribers", index)
             }
-            icon={<Users className="w-6 h-6 text-purple-600" />}
+            icon={<Users className="w-8 h-8 text-purple-600" />}
+            funnelConversions={funnelConversions}
           />
 
           <RevenueSection

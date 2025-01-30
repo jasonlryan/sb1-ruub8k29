@@ -1,19 +1,29 @@
-import React from 'react';
-import { Trash2 } from 'lucide-react';
+import React from "react";
+import { Trash2 } from "lucide-react";
 
 interface TableProps {
   headers: string[];
   data: (string | number)[][];
   onEdit?: (rowIndex: number, colIndex: number, value: string) => void;
-  onDelete?: (rowIndex: number) => void;
+  onDelete?: (index: number) => void;
   editableColumns?: boolean[];
-  dropdownOptions?: (colIndex: number) => string[] | undefined;
+  inputTypes?: ("text" | "number")[];
+  stepValues?: string[];
 }
 
-export function Table({ headers, data, onEdit, onDelete, editableColumns, dropdownOptions }: TableProps) {
+export function Table({
+  headers,
+  data,
+  onEdit,
+  onDelete,
+  editableColumns = [],
+  inputTypes = [],
+  stepValues = [],
+}: TableProps) {
   const handleEdit = (rowIndex: number, colIndex: number, value: string) => {
-    if (onEdit && editableColumns?.[colIndex]) {
-      onEdit(rowIndex, colIndex, value);
+    if (onEdit && editableColumns[colIndex]) {
+      const cleanValue = value.replace(/[£%,]/g, "");
+      onEdit(rowIndex, colIndex, cleanValue);
     }
   };
 
@@ -41,27 +51,16 @@ export function Table({ headers, data, onEdit, onDelete, editableColumns, dropdo
                   key={cellIndex}
                   className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
                 >
-                  {editableColumns?.[cellIndex] ? (
-                    dropdownOptions?.(cellIndex) ? (
-                      <select
-                        value={cell.toString()}
-                        onChange={(e) => handleEdit(rowIndex, cellIndex, e.target.value)}
-                        className="w-full px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        {dropdownOptions(cellIndex).map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={cell}
-                        onChange={(e) => handleEdit(rowIndex, cellIndex, e.target.value)}
-                        className="w-full px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    )
+                  {editableColumns[cellIndex] ? (
+                    <input
+                      type={inputTypes[cellIndex] || "text"}
+                      step={stepValues[cellIndex] || "1"}
+                      value={cell.toString()}
+                      onChange={(e) =>
+                        handleEdit(rowIndex, cellIndex, e.target.value)
+                      }
+                      className="w-full px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
                   ) : (
                     cell
                   )}

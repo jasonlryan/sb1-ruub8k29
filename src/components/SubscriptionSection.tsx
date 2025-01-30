@@ -1,7 +1,8 @@
 import React from "react";
 import { Table } from "./Table";
 import { Subscription, ActiveSubscribers } from "../types/model";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, RefreshCw } from "lucide-react";
+import { supabase } from "../lib/supabase";
 
 interface SubscriptionSectionProps {
   subscriptions: Subscription[];
@@ -12,6 +13,7 @@ interface SubscriptionSectionProps {
   onDeleteSubscription: (index: number) => void;
   onDeleteActiveSubscriber: (index: number) => void;
   icon: React.ReactNode;
+  funnelConversions: FunnelConversion[];
 }
 
 export function SubscriptionSection({
@@ -23,6 +25,7 @@ export function SubscriptionSection({
   onDeleteSubscription,
   onDeleteActiveSubscriber,
   icon,
+  funnelConversions,
 }: SubscriptionSectionProps) {
   const totals = {
     monthly: {
@@ -75,26 +78,36 @@ export function SubscriptionSection({
     const newActiveSubscribers = [...activeSubscribers];
     const subscriber = { ...newActiveSubscribers[rowIndex] };
 
-    if (field === "newDeals" || field === "churnedSubs") {
+    // Update the edited field
+    if (
+      field === "newDeals" ||
+      field === "churnedSubs" ||
+      field === "existingSubs"
+    ) {
       subscriber[field] = parseFloat(value) || 0;
-      subscriber.endingSubs =
-        subscriber.existingSubs + subscriber.newDeals - subscriber.churnedSubs;
-    } else if (field !== "endingSubs") {
+    } else {
       subscriber[field] = value;
     }
 
-    if (rowIndex < newActiveSubscribers.length - 1) {
-      for (let i = rowIndex + 1; i < newActiveSubscribers.length; i++) {
-        newActiveSubscribers[i].existingSubs =
-          newActiveSubscribers[i - 1].endingSubs;
-        newActiveSubscribers[i].endingSubs =
-          newActiveSubscribers[i].existingSubs +
-          newActiveSubscribers[i].newDeals -
-          newActiveSubscribers[i].churnedSubs;
-      }
-    }
+    // Calculate ending subs for current month
+    subscriber.endingSubs =
+      subscriber.existingSubs + subscriber.newDeals - subscriber.churnedSubs;
 
     newActiveSubscribers[rowIndex] = subscriber;
+
+    // Update all subsequent months
+    for (let i = rowIndex + 1; i < newActiveSubscribers.length; i++) {
+      const currentMonth = { ...newActiveSubscribers[i] };
+      // Set existing subs to previous month's ending subs
+      currentMonth.existingSubs = newActiveSubscribers[i - 1].endingSubs;
+      // Calculate new ending subs
+      currentMonth.endingSubs =
+        currentMonth.existingSubs +
+        currentMonth.newDeals -
+        currentMonth.churnedSubs;
+      newActiveSubscribers[i] = currentMonth;
+    }
+
     setActiveSubscribers(newActiveSubscribers);
   };
 
@@ -114,6 +127,69 @@ export function SubscriptionSection({
     };
   };
 
+  const calculateTotalDeals = () => {
+    return funnelConversions.reduce((sum, conv) => sum + conv.deals, 0);
+  };
+
+  const handleSyncWithFunnel = async () => {
+    const totalDeals = calculateTotalDeals();
+    const newSubscribers = [...activeSubscribers];
+
+    try {
+      // First delete existing records for this user
+      const { error: deleteError } = await supabase
+        .from("active_subscribers")
+        .delete()
+        .eq("user_id", activeSubscribers[0].user_id);
+
+      if (deleteError) throw deleteError;
+
+      // Update each month's data
+      activeSubscribers.forEach((sub, index) => {
+        if (index === 0) {
+          newSubscribers[index] = {
+            ...sub,
+            existingSubs: 0,
+            newDeals: totalDeals,
+            churnedSubs: sub.churnedSubs || 0,
+            endingSubs: totalDeals - (sub.churnedSubs || 0),
+            user_id: sub.user_id,
+          };
+        } else {
+          const prevMonth = newSubscribers[index - 1];
+          newSubscribers[index] = {
+            ...sub,
+            existingSubs: prevMonth.endingSubs,
+            newDeals: totalDeals,
+            churnedSubs: sub.churnedSubs || 0,
+            endingSubs:
+              prevMonth.endingSubs + totalDeals - (sub.churnedSubs || 0),
+            user_id: sub.user_id,
+          };
+        }
+      });
+
+      // Insert new records
+      const { error: insertError } = await supabase
+        .from("active_subscribers")
+        .insert(
+          newSubscribers.map((sub) => ({
+            month: sub.month,
+            existing_subs: sub.existingSubs || 0,
+            new_deals: sub.newDeals || 0,
+            churned_subs: sub.churnedSubs || 0,
+            ending_subs: sub.endingSubs || 0,
+            user_id: sub.user_id,
+          }))
+        );
+
+      if (insertError) throw insertError;
+      setActiveSubscribers(newSubscribers);
+    } catch (err) {
+      console.error("Error syncing with funnel:", err);
+    }
+  };
+
   const rollingMetrics = calculateRollingMetrics();
 
   return (
@@ -127,33 +203,40 @@ export function SubscriptionSection({
 
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">3.1 Active Subscribers</h3>
-          <button
-            onClick={() => onAddRow("activeSubscribers")}
-            className="flex items-center gap-2 px-3 py-1 text-sm text-blue-600 hover:text-blue-700"
-          >
-            <PlusCircle className="w-4 h-4" />
-            Add Month
-          </button>
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-semibold">3.1 Active Subscribers</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSyncWithFunnel}
+                className="flex items-center gap-2 px-3 py-1 text-sm text-green-600 hover:text-green-700"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Sync with Funnel
+              </button>
+              <button
+                onClick={() => onAddRow("activeSubscribers")}
+                className="flex items-center gap-2 px-3 py-1 text-sm text-blue-600 hover:text-blue-700"
+              >
+                <PlusCircle className="w-4 h-4" />
+                Add Month
+              </button>
+            </div>
+          </div>
         </div>
         <Table
           headers={[
             "Month",
             "Existing Subs",
             "New Deals",
-            "Churned",
-            "Churn Rate %",
+            "Churned Subs",
             "Ending Subs",
           ]}
-          data={activeSubscribers.map((sub) => [
+          data={(activeSubscribers || []).map((sub) => [
             sub?.month || "",
-            (sub?.existingSubs || 0).toString(),
-            (sub?.newDeals || 0).toString(),
-            (sub?.churnedSubs || 0).toString(),
-            `${getMonthlyChurnRate(
-              sub || { existingSubs: 0, churnedSubs: 0 }
-            ).toFixed(1)}%`,
-            (sub?.endingSubs || 0).toString(),
+            sub?.existingSubs?.toString() || "0",
+            sub?.newDeals?.toString() || "0",
+            sub?.churnedSubs?.toString() || "0",
+            sub?.endingSubs?.toString() || "0",
           ])}
           onEdit={(rowIndex, colIndex, value) => {
             const fields: (keyof ActiveSubscribers)[] = [
@@ -165,8 +248,9 @@ export function SubscriptionSection({
             ];
             handleActiveSubscribersEdit(rowIndex, fields[colIndex], value);
           }}
-          onDelete={onDeleteActiveSubscriber}
-          editableColumns={[true, true, true, true, false, false]}
+          editableColumns={[false, true, false, true, false]}
+          inputTypes={["text", "number", "number", "number", "number"]}
+          stepValues={["", "1", "1", "1", "1"]}
         />
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 bg-gray-50 rounded-md">

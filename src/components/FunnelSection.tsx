@@ -14,10 +14,8 @@ interface FunnelSectionProps {
 export function FunnelSection({
   conversions,
   setConversions,
-  onAddRow,
-  onDelete,
   icon,
-}: FunnelSectionProps) {
+}: Omit<FunnelSectionProps, "onAddRow" | "onDelete">) {
   const totals = {
     monthly: {
       totalMql: conversions.reduce((sum, conv) => sum + conv.mql, 0),
@@ -45,22 +43,27 @@ export function FunnelSection({
     colIndex: number,
     value: string
   ) => {
-    const conv = { ...conversions[rowIndex] };
-    const numericValue = parseFloat(value.replace(/%/g, "")) || 0;
+    const newConversions = [...conversions];
+    const conversion = { ...newConversions[rowIndex] };
+    const numericValue = parseFloat(value) || 0;
 
-    switch (colIndex) {
-      case 2: // MQL → SQL Rate
-        conv.mqlToSqlRate = numericValue;
-        conv.sql = Math.floor(conv.mql * (numericValue / 100));
-        conv.deals = Math.floor(conv.sql * (conv.sqlToDealRate / 100));
-        break;
-      case 4: // SQL → Deal Rate
-        conv.sqlToDealRate = numericValue;
-        conv.deals = Math.floor(conv.sql * (numericValue / 100));
-        break;
+    // MQL → SQL Rate
+    if (colIndex === 2) {
+      conversion.mqlToSqlRate = numericValue;
+      conversion.sql = Math.floor(conversion.mql * (numericValue / 100));
+      conversion.deals = Math.floor(
+        conversion.sql * (conversion.sqlToDealRate / 100)
+      );
+    }
+    // SQL → Deal Rate
+    else if (colIndex === 6) {
+      // Column index in second table
+      conversion.sqlToDealRate = numericValue;
+      conversion.deals = Math.floor(conversion.sql * (numericValue / 100));
     }
 
-    setConversions((prev) => prev.map((c, i) => (i === rowIndex ? conv : c)));
+    newConversions[rowIndex] = conversion;
+    setConversions(newConversions);
   };
 
   return (
@@ -75,13 +78,6 @@ export function FunnelSection({
           <h3 className="text-lg font-semibold">
             2.1 From MQL to SQL (Setter Process)
           </h3>
-          <button
-            onClick={onAddRow}
-            className="flex items-center gap-2 px-3 py-1 text-sm text-blue-600 hover:text-blue-700"
-          >
-            <PlusCircle className="w-4 h-4" />
-            Add Channel
-          </button>
         </div>
         <Table
           headers={["Channel", "MQLs", "MQL → SQL Rate", "SQLs"]}
@@ -91,10 +87,7 @@ export function FunnelSection({
             `${conv.mqlToSqlRate}%`,
             conv.sql.toString(),
           ])}
-          onEdit={(rowIndex, colIndex, value) => {
-            handleConversionEdit(rowIndex, colIndex, value);
-          }}
-          onDelete={onDelete}
+          onEdit={handleConversionEdit}
           editableColumns={[false, false, true, false]}
         />
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -114,12 +107,7 @@ export function FunnelSection({
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">
-            2.2 From SQL to Deal (Closer Process)
-          </h3>
-        </div>
+      <div className="bg-white rounded-lg shadow p-6" id="sql-to-deal">
         <Table
           headers={["Channel", "SQLs", "SQL → Deal Rate", "New Deals"]}
           data={conversions.map((conv) => [
@@ -128,10 +116,9 @@ export function FunnelSection({
             `${conv.sqlToDealRate}%`,
             conv.deals.toString(),
           ])}
-          onEdit={(rowIndex, colIndex, value) => {
-            handleConversionEdit(rowIndex, colIndex, value);
-          }}
-          onDelete={onDelete}
+          onEdit={(rowIndex, colIndex, value) =>
+            handleConversionEdit(rowIndex, colIndex + 4, value)
+          }
           editableColumns={[false, false, true, false]}
         />
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
