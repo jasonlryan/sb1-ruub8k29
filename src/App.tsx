@@ -80,6 +80,8 @@ function App() {
 
         if (channelsError) throw channelsError;
 
+        let transformedChannels: MarketingChannel[] = [];
+
         if (!channelsData || channelsData.length === 0) {
           // No channels found - create default ones
           const defaultChannelsWithUserId = DEFAULT_MARKETING_CHANNELS.map(
@@ -96,8 +98,9 @@ function App() {
           if (insertError) throw insertError;
 
           setMarketingChannels(defaultChannelsWithUserId);
+          transformedChannels = defaultChannelsWithUserId; // Store for funnel use
         } else {
-          const transformedChannels = channelsData.map((channel) => ({
+          transformedChannels = channelsData.map((channel) => ({
             name: channel.name,
             monthlyBudget: channel.monthly_budget,
             costPerLead: channel.cost_per_lead,
@@ -120,13 +123,13 @@ function App() {
         if (funnelError) throw funnelError;
 
         if (!funnelData || funnelData.length === 0) {
-          // Create default funnel data for each marketing channel
-          const defaultFunnelData = marketingChannels.map((channel) => ({
+          // Create funnel data only for existing channels
+          const defaultFunnelData = transformedChannels.map((channel) => ({
             channel: channel.name,
             mql: channel.leadsGenerated,
-            mqlToSqlRate: 30, // 30% conversion from MQL to SQL
+            mqlToSqlRate: 30,
             sql: Math.floor(channel.leadsGenerated * 0.3),
-            sqlToDealRate: 20, // 20% conversion from SQL to Deal
+            sqlToDealRate: 20,
             deals: Math.floor(channel.leadsGenerated * 0.3 * 0.2),
             user_id: user.id,
           }));
@@ -136,11 +139,16 @@ function App() {
             .insert(defaultFunnelData);
 
           if (insertError) throw insertError;
-
           setFunnelConversions(defaultFunnelData);
         } else {
-          // Transform from snake_case to camelCase
-          const transformedFunnelData = funnelData.map((funnel) => ({
+          // Only keep funnel data for existing channels
+          const validChannelNames = transformedChannels.map((c) => c.name);
+          const filteredFunnelData = funnelData.filter((f) =>
+            validChannelNames.includes(f.channel)
+          );
+
+          // Transform and set the filtered data
+          const transformedFunnelData = filteredFunnelData.map((funnel) => ({
             channel: funnel.channel,
             mql: funnel.mql,
             mqlToSqlRate: funnel.mql_to_sql_rate,
@@ -159,7 +167,50 @@ function App() {
           .eq("user_id", user.id);
 
         if (teamError) throw teamError;
-        if (teamData) setMarketingTeam(teamData);
+
+        if (!teamData || teamData.length === 0) {
+          // Create default marketing team data
+          const defaultTeam = [
+            {
+              role: "Marketing Manager",
+              fte: 1,
+              salaryPerFte: 45000,
+              monthlyTotal: Math.floor(45000 / 12),
+              user_id: user.id,
+            },
+            {
+              role: "Marketing Executive",
+              fte: 2,
+              salaryPerFte: 35000,
+              monthlyTotal: Math.floor((35000 / 12) * 2),
+              user_id: user.id,
+            },
+            {
+              role: "Content Writer",
+              fte: 1,
+              salaryPerFte: 30000,
+              monthlyTotal: Math.floor(30000 / 12),
+              user_id: user.id,
+            },
+          ];
+
+          const { error: insertError } = await supabase
+            .from("marketing_team")
+            .insert(defaultTeam);
+
+          if (insertError) throw insertError;
+          setMarketingTeam(defaultTeam);
+        } else {
+          // Transform from snake_case to camelCase
+          const transformedTeam = teamData.map((member) => ({
+            role: member.role,
+            fte: member.fte,
+            salaryPerFte: member.salary_per_fte,
+            monthlyTotal: Math.floor((member.salary_per_fte / 12) * member.fte),
+            user_id: member.user_id,
+          }));
+          setMarketingTeam(transformedTeam);
+        }
 
         // Load subscriptions
         const { data: subscriptionData, error: subscriptionError } =
@@ -448,13 +499,11 @@ function App() {
 
   // Calculate financial totals
   const financialTotals = useMemo(() => {
-    const marketingCosts = marketingChannels.reduce(
-      (sum, channel) => sum + channel.monthlyBudget,
-      0
+    const marketingCosts = Math.round(
+      marketingChannels.reduce((sum, channel) => sum + channel.monthlyBudget, 0)
     );
-    const payrollCosts = departments.reduce(
-      (sum, dept) => sum + dept.monthlyTotal,
-      0
+    const payrollCosts = Math.round(
+      departments.reduce((sum, dept) => sum + dept.monthlyTotal, 0)
     );
     const cogsCosts = cogs.reduce((sum, cost) => sum + cost.monthlyCost, 0);
     const opexCosts = operatingExpenses.reduce(
@@ -572,8 +621,12 @@ function App() {
           employee.role = value;
         }
 
-        employee.monthlyTotal = (employee.salaryPerFte / 12) * employee.fte;
+        // Fix: Calculate monthly total correctly
+        employee.monthlyTotal = Math.floor(
+          (employee.salaryPerFte / 12) * employee.fte
+        );
 
+        // Update in Supabase with snake_case
         const { error } = await supabase.from("marketing_team").upsert({
           role: employee.role,
           fte: employee.fte,

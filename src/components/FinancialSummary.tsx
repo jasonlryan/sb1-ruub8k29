@@ -20,8 +20,8 @@ export function FinancialSummary({
   annualCosts,
   sectionTotals,
 }: FinancialSummaryProps) {
-  const monthlyNetIncome = totalRevenue - totalCosts;
-  const annualNetIncome = annualRevenue - annualCosts;
+  const monthlyNetIncome = Math.round(totalRevenue - totalCosts);
+  const annualNetIncome = Math.round(annualRevenue - annualCosts);
   const grossMargin = (
     ((totalRevenue - sectionTotals.cogs) / totalRevenue) *
     100
