@@ -190,6 +190,47 @@ export function SubscriptionSection({
     }
   };
 
+  const handleAddMonth = async () => {
+    const months = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+
+    const lastMonth = activeSubscribers[activeSubscribers.length - 1];
+    const lastMonthIndex = months.indexOf(lastMonth.month);
+    const nextMonthIndex = (lastMonthIndex + 1) % 12;
+
+    const newMonth = {
+      month: months[nextMonthIndex],
+      existingSubs: lastMonth.endingSubs,
+      newDeals: 114, // Keep pattern
+      churnedSubs: 0,
+      endingSubs: lastMonth.endingSubs + 114, // Initial calculation
+      user_id: lastMonth.user_id,
+    };
+
+    try {
+      const { error } = await supabase
+        .from("active_subscribers")
+        .insert([newMonth]);
+
+      if (error) throw error;
+      setActiveSubscribers([...activeSubscribers, newMonth]);
+    } catch (err) {
+      console.error("Error adding month:", err);
+    }
+  };
+
   const rollingMetrics = calculateRollingMetrics();
 
   return (
@@ -214,7 +255,7 @@ export function SubscriptionSection({
                 Sync with Funnel
               </button>
               <button
-                onClick={() => onAddRow("activeSubscribers")}
+                onClick={handleAddMonth}
                 className="flex items-center gap-2 px-3 py-1 text-sm text-blue-600 hover:text-blue-700"
               >
                 <PlusCircle className="w-4 h-4" />

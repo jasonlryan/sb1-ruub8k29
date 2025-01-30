@@ -184,12 +184,12 @@ export function ExpensesSection({
             "Additional Costs",
             "Monthly Total",
           ]}
-          data={departments.map((dept) => [
-            dept.name,
-            dept.fte.toString(),
-            dept.salary.toString(),
-            dept.additionalCosts.toString(),
-            `£${dept.monthlyTotal.toLocaleString()}`,
+          data={(departments || []).map((dept) => [
+            dept?.name || "",
+            dept?.fte?.toString() || "0",
+            dept?.salary?.toString() || "0",
+            dept?.additionalCosts?.toString() || "0",
+            `£${dept?.monthlyTotal?.toLocaleString() || "0"}`,
           ])}
           onEdit={(rowIndex, colIndex, value) => {
             const fields: (keyof Department)[] = [
