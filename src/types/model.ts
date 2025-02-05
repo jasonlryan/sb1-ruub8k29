@@ -56,6 +56,7 @@ export interface FundingRound {
   valuationPre: number;
   equitySold: number;
   closeDate: string;
+  user_id: string;
 }
 
 export interface COGS {
@@ -73,7 +74,12 @@ export interface Department {
 }
 
 // Add strict typing for function parameters
-export type TableSection = "marketing" | "departments" | "opex" | "subscriptions" | "activeSubscribers";
+export type TableSection = 
+  | "marketing" 
+  | "departments" 
+  | "opex" 
+  | "subscriptions" 
+  | "activeSubscriber";
 
 export type HandleAddRow = (section: TableSection, data?: Record<string, unknown>) => void;
 export type HandleUpdateData<T> = (index: number, field: keyof T, value: string) => void;

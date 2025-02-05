@@ -11,7 +11,10 @@ interface ExpensesSectionProps {
   operatingExpenses: OperatingExpense[];
   setDepartments: (departments: Department[]) => void;
   setOperatingExpenses: (expenses: OperatingExpense[]) => void;
-  onAddRow: (section: "departments" | "opex") => void;
+  onAddRow: (
+    section: "departments" | "opex",
+    data?: Partial<Department | OperatingExpense>
+  ) => void;
   onDeleteDepartment: (index: number) => void;
   onDeleteOperatingExpense: (index: number) => void;
   icon: React.ReactNode;
@@ -66,18 +69,19 @@ export function ExpensesSection({
     // Clean the input value first
     const cleanValue = value.replace(/[£,%]/g, "");
 
-    switch (field) {
-      case "fte":
-        department.fte = parseFloat(cleanValue) || 0;
-        break;
-      case "salary":
-        department.salary = parseFloat(cleanValue) || 0;
-        break;
-      case "additionalCosts":
-        department.additionalCosts = parseFloat(cleanValue) || 0;
-        break;
-      default:
-        department[field] = cleanValue;
+    // Handle numeric fields
+    const numericFields: (keyof Department)[] = [
+      "fte",
+      "salary",
+      "additionalCosts",
+      "monthlyTotal",
+    ];
+
+    if (numericFields.includes(field)) {
+      department[field] = parseFloat(cleanValue) || 0;
+    } else {
+      // Handle string fields (name)
+      department[field] = cleanValue;
     }
 
     // Recalculate monthly total

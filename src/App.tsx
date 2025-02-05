@@ -26,7 +26,7 @@ import {
   Subscription,
   OperatingExpense,
   FundingRound,
-  ActiveSubscribers,
+  ActiveSubscriber,
   COGS,
   Department,
 } from "./types/model";
@@ -51,7 +51,7 @@ function App() {
   >([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [activeSubscribers, setActiveSubscribers] = useState<
-    ActiveSubscribers[]
+    ActiveSubscriber[]
   >([]);
   const [cogs, setCogs] = useState<COGS[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -59,6 +59,11 @@ function App() {
     OperatingExpense[]
   >([]);
   const [fundingRounds, setFundingRounds] = useState<FundingRound[]>([]);
+
+  // Early return if no user
+  if (!user) {
+    return <AuthForm />;
+  }
 
   // Load data from Supabase
   useEffect(() => {
@@ -220,7 +225,8 @@ function App() {
           await supabase
             .from("subscriptions")
             .select("*")
-            .eq("user_id", user.id);
+            .eq("user_id", user.id)
+            .order("tier", { ascending: true });
 
         if (subscriptionError) throw subscriptionError;
 
@@ -460,7 +466,7 @@ function App() {
           cogs,
         });
       } catch (err) {
-        console.error("Load error:", err);
+        console.error("Error loading data:", err);
         setError(err instanceof Error ? err.message : "Failed to load data");
       } finally {
         setLoading(false);
@@ -538,21 +544,31 @@ function App() {
       if (!user) return;
 
       try {
-        console.log("Updating channel:", { index, field, value });
         const channel = marketingChannels[index];
         const updatedChannel = { ...channel };
 
-        // Handle different field types
-        if (field === "monthlyBudget" || field === "costPerLead") {
-          const numericValue = parseFloat(value.replace(/[£,]/g, "")) || 0;
-          updatedChannel[field] = numericValue;
+        // Handle numeric fields explicitly
+        if (
+          field === "monthlyBudget" ||
+          field === "costPerLead" ||
+          field === "leadsGenerated"
+        ) {
+          const numValue = parseFloat(value.replace(/[£,]/g, ""));
+          updatedChannel[field] = numValue;
 
-          if (updatedChannel.costPerLead > 0) {
+          // Update leads if cost per lead changes
+          if (field === "costPerLead" && numValue > 0) {
             updatedChannel.leadsGenerated = Math.floor(
-              updatedChannel.monthlyBudget / updatedChannel.costPerLead
+              updatedChannel.monthlyBudget / numValue
             );
           }
-        } else {
+        } else if (
+          field === "name" ||
+          field === "notes" ||
+          field === "id" ||
+          field === "user_id"
+        ) {
+          // Handle string fields
           updatedChannel[field] = value;
         }
 
@@ -899,7 +915,7 @@ function App() {
 
   // Modify handleActiveSubscriberUpdate to only allow editing existingSubs and churnedSubs
   const handleActiveSubscriberUpdate = useCallback(
-    async (index: number, field: keyof ActiveSubscribers, value: string) => {
+    async (index: number, field: keyof ActiveSubscriber, value: string) => {
       if (!user) return;
 
       try {
@@ -947,27 +963,29 @@ function App() {
 
   // Add handler for adding new months
   const handleAddSubscriberMonth = async () => {
+    if (!user) return;
+
     const lastMonth = activeSubscribers[activeSubscribers.length - 1];
-    const newMonth = {
-      month: "New Month", // TODO: Calculate next month
-      existingSubs: lastMonth.endingSubs,
-      newDeals: 114, // Default from pattern
+    const newMonth: ActiveSubscriber = {
+      month: "New Month",
+      existingSubs: lastMonth?.endingSubs || 0,
+      newDeals: calculateMonthlyDeals,
       churnedSubs: 0,
-      endingSubs: lastMonth.endingSubs + 114, // Initial calculation
+      endingSubs: (lastMonth?.endingSubs || 0) + calculateMonthlyDeals,
       user_id: user.id,
     };
 
-    const { error } = await supabase
-      .from("active_subscribers")
-      .insert(newMonth);
+    try {
+      const { error } = await supabase
+        .from("active_subscribers")
+        .insert(newMonth);
 
-    if (error) throw error;
-    setActiveSubscribers([...activeSubscribers, newMonth]);
+      if (error) throw error;
+      setActiveSubscribers([...activeSubscribers, newMonth]);
+    } catch (err) {
+      console.error("Error adding month:", err);
+    }
   };
-
-  if (!user) {
-    return <AuthForm />;
-  }
 
   if (loading) {
     return (

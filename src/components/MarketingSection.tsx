@@ -4,23 +4,30 @@ import {
   MarketingChannel,
   TableSection,
   HandleUpdateData,
+  Employee,
 } from "../types/model";
 import { PlusCircle } from "lucide-react";
 import { Dialog } from "@headlessui/react";
 
 interface MarketingSectionProps {
   channels: MarketingChannel[];
+  team: Employee[];
   onUpdateChannel: HandleUpdateData<MarketingChannel>;
+  onUpdateTeam: HandleUpdateData<Employee>;
   onAddRow: (section: TableSection) => void;
   onDeleteChannel: (index: number) => void;
+  onDeleteTeam: (index: number) => void;
   icon: React.ReactNode;
 }
 
 export function MarketingSection({
   channels,
+  team,
   onUpdateChannel,
+  onUpdateTeam,
   onAddRow,
   onDeleteChannel,
+  onDeleteTeam,
   icon,
 }: MarketingSectionProps) {
   const totalBudget = channels.reduce(
@@ -74,6 +81,10 @@ export function MarketingSection({
     setError("");
   };
 
+  const handleDeleteChannel = (index: number) => {
+    onDeleteChannel(index);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 mb-4">
@@ -111,7 +122,7 @@ export function MarketingSection({
             const cleanValue = value.replace(/[£,]/g, "");
             onUpdateChannel(rowIndex, fields[colIndex], cleanValue);
           }}
-          onDelete={onDeleteChannel}
+          onDelete={handleDeleteChannel}
           editableColumns={[false, true, true, false, true]}
         />
         <div className="mt-4 p-4 bg-gray-50 rounded-md">
@@ -126,6 +137,39 @@ export function MarketingSection({
             {totalLeads > 0 ? (totalBudget / totalLeads).toFixed(2) : "0.00"}
           </p>
         </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">1.2 Marketing Team</h3>
+          <button
+            onClick={() => onAddRow("marketing")}
+            className="flex items-center gap-2 px-3 py-1 text-sm text-blue-600 hover:text-blue-700"
+          >
+            <PlusCircle className="w-4 h-4" />
+            Add Team Member
+          </button>
+        </div>
+        <Table
+          headers={["Role", "FTE", "Annual Salary", "Monthly Cost"]}
+          data={team.map((member) => [
+            member.role,
+            member.fte.toString(),
+            `£${member.salaryPerFte.toLocaleString()}`,
+            `£${member.monthlyTotal.toLocaleString()}`,
+          ])}
+          onEdit={(rowIndex, colIndex, value) => {
+            const fields: (keyof Employee)[] = [
+              "role",
+              "fte",
+              "salaryPerFte",
+              "monthlyTotal",
+            ];
+            onUpdateTeam(rowIndex, fields[colIndex], value);
+          }}
+          onDelete={onDeleteTeam}
+          editableColumns={[true, true, true, false]}
+        />
       </div>
 
       <Dialog open={isOpen} onClose={() => setIsOpen(false)}>

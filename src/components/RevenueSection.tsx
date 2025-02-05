@@ -125,12 +125,17 @@ export function RevenueSection({
         </div>
         <Table
           headers={["Tier", "Monthly Price", "Subscribers", "MRR"]}
-          data={subscriptions.map((sub) => [
-            sub?.tier || "",
-            `£${(sub?.monthlyPrice || 0).toLocaleString()}`,
-            (sub?.subscriberCount || 0).toString(),
-            `£${(sub?.mrr || 0).toLocaleString()}`,
-          ])}
+          data={subscriptions
+            .sort((a, b) => {
+              const order = ["Basic", "Pro", "Enterprise"];
+              return order.indexOf(a.tier) - order.indexOf(b.tier);
+            })
+            .map((sub) => [
+              sub?.tier || "",
+              `£${(sub?.monthlyPrice || 0).toLocaleString()}`,
+              (sub?.subscriberCount || 0).toString(),
+              `£${(sub?.mrr || 0).toLocaleString()}`,
+            ])}
           onEdit={handleSubscriptionEdit}
           editableColumns={[true, true, true, false]}
         />
